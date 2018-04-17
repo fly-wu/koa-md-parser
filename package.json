@@ -1,0 +1,15 @@
+{
+  "name": "koa-md-parser",
+  "version": "0.9.0",
+  "description": "markdown parser plugin for koa",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "markdown",
+    "koa"
+  ],
+  "author": "xifei.wu",
+  "license": "ISC"
+}
