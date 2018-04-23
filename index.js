@@ -12,9 +12,14 @@ const debug = Debug('koa-md-parser')
 Debug.enable('koa-md-parser')
 
 class MDParser {
-  constructor(destDir) {
-    destDir = destDir || process.cwd();
+  constructor(destDir, options) {
+    destDir = destDir || path.join(__dirname, 'examples');
+    options = options || {};
+    // prefix must be ASCII code
+    options.urlPrefix = (options.urlPrefix || null);
     this.destDir = destDir;
+    this.options = options;
+
     this.setMarked();
     this.fileMap = {};
 
@@ -30,15 +35,58 @@ class MDParser {
 
   get(filePath) {
     let result = null;
-    if (filePath.startsWith('/')) {
-      filePath = filePath.substring(1);
-    }
-    if (this.fileMap.hasOwnProperty(filePath)) {
-      result = this.fileMap[filePath];
+    if (filePath) {
+      if (filePath.startsWith('/')) {
+        filePath = filePath.substring(1);
+      }
+      if (this.fileMap.hasOwnProperty(filePath)) {
+        result = this.fileMap[filePath];
+      }
     }
     return result;
   }
 
+  safeDecodeURIComponent(text) {
+    try {
+      return decodeURIComponent(text)
+    } catch (e) {
+      return text
+    }
+  }
+
+  /**
+   * return a middleware for koa
+   * @returns {function(*, *)}
+   */
+  getMiddleware() {
+    return async (ctx, next) => {
+      let options = this.options;
+      let urlPrefix = options.urlPrefix;
+      let urlPath = this.safeDecodeURIComponent(ctx.path);
+      let filePath = null;
+      if (null != urlPrefix) {
+        if (urlPath.indexOf(urlPrefix) !== 0) {
+          return await next();
+        }
+        filePath = urlPath.slice(urlPrefix.length)
+      }
+      let parserResult = this.get(filePath);
+      if (null === parserResult) {
+        return await next();
+      }
+      ctx.set('content-encoding', 'application/json')
+      ctx.body = {
+        code: 0,
+        content: parserResult
+      };
+      return;
+    }
+  }
+
+
+  /**
+   * add some custom action for marked.Renderer
+   */
   setMarked() {
     // Use highlight.js for code blocks
     const renderer = new marked.Renderer()
@@ -63,6 +111,20 @@ class MDParser {
     })
   }
 
+  // Get doc file and sent back it's attributes and html body
+  async parseMdFile(filePath, cwd) {
+    let file = await readFile(path.resolve(cwd, filePath), 'utf-8')
+    // transform markdown to html
+    file = fm(file)
+    return {
+      attrs: file.attributes,
+      body: marked(file.body)
+    }
+  }
+  /**
+   * find and parse all file end with .md under target directory
+   * @param cwd: dest directory
+   */
   async readMdFiles(cwd) {
     cwd = cwd || process.cwd()
     let docPaths = await glob('*/**/*.md', {
@@ -84,17 +146,11 @@ class MDParser {
     return results
   }
 
-  // Get doc file and sent back it's attributes and html body
-  async parseMdFile(filePath, cwd) {
-    let file = await readFile(path.resolve(cwd, filePath), 'utf-8')
-    // transform markdown to html
-    file = fm(file)
-    return {
-      attrs: file.attributes,
-      body: marked(file.body)
-    }
-  }
-
+  /**
+   * find and parse all the files end with .json under the target directory
+   * @param cwd
+   * @returns {Promise.<{}>}
+   */
   async readMenuFiles(cwd) {
     cwd = cwd || process.cwd()
     let menuPaths = await glob('*/**/menu.json', {
