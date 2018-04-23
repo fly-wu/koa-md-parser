@@ -1,15 +1,42 @@
-const glob = pify(require('glob'))
+const fs = require('fs')
+const util = require('util')
+const path = require('path')
 const marked = require('marked')
 const highlightjs = require('highlight.js')
 const fm = require('front-matter')
-const fs = require('fs')
 const readFile = util.promisify(fs.readFile)
+const glob = util.promisify(require('glob'))
+const Debug = require('debug')
+const debug = Debug('koa-md-parser')
+// uncomment this line to enable debug of koa-md-parser
+Debug.enable('koa-md-parser')
 
 class MDParser {
   constructor(destDir) {
     destDir = destDir || process.cwd();
     this.destDir = destDir;
     this.setMarked();
+    this.fileMap = {};
+
+    Promise.all([this.readMdFiles(this.destDir), this.readMenuFiles(this.destDir)]).then(data => {
+      // console.log(data)
+      this.fileMap = Object.assign(data[0], data[1]);
+      debug('%s: %o', 'files found', Object.keys(this.fileMap));
+    }).catch(err => {
+      console.log('parse fail!');
+      console.log(err);
+    });
+  }
+
+  get(filePath) {
+    let result = null;
+    if (filePath.startsWith('/')) {
+      filePath = filePath.substring(1);
+    }
+    if (this.fileMap.hasOwnProperty(filePath)) {
+      result = this.fileMap[filePath];
+    }
+    return result;
   }
 
   setMarked() {
@@ -23,7 +50,6 @@ class MDParser {
     renderer.heading = (text, level) => {
       const patt = /\s?{([^}]+)}$/
       let link = patt.exec(text)
-
       if (link && link.length && link[1]) {
         text = text.replace(patt, '')
         link = link[1]
@@ -37,8 +63,7 @@ class MDParser {
     })
   }
 
-  async getFiles(cwd) {
-    console.log('Building files...')
+  async readMdFiles(cwd) {
     cwd = cwd || process.cwd()
     let docPaths = await glob('*/**/*.md', {
       cwd: cwd,
@@ -46,31 +71,49 @@ class MDParser {
       nodir: true
     })
     let promises = []
-    let tmpDocFiles = {}
-    docPaths.forEach((path) => {
-      let promise = getDocFile(path, cwd)
-      promise.then((file) => {
-        tmpDocFiles[path] = file
+    let results = {}
+    docPaths.forEach((it) => {
+      let promise = this.parseMdFile(it, cwd)
+      promise.then((fileContent) => {
+        let key = it.replace(/\.md$/, '');
+        results[key] = fileContent;
       })
       promises.push(promise)
     })
     await Promise.all(promises)
-    _DOC_FILES_ = tmpDocFiles
-    // Construct the doc menu
-    await getMenu(cwd)
+    return results
   }
 
   // Get doc file and sent back it's attributes and html body
-  async getDocFile(path, cwd) {
-    cwd = cwd || process.cwd()
-    let file = await readFile(resolve(cwd, path), 'utf-8')
+  async parseMdFile(filePath, cwd) {
+    let file = await readFile(path.resolve(cwd, filePath), 'utf-8')
     // transform markdown to html
     file = fm(file)
-    let _DOC_FILES_[path] = {
+    return {
       attrs: file.attributes,
       body: marked(file.body)
     }
-    return _DOC_FILES_[path]
+  }
+
+  async readMenuFiles(cwd) {
+    cwd = cwd || process.cwd()
+    let menuPaths = await glob('*/**/menu.json', {
+      cwd: cwd,
+      ignore: 'node_modules/**/*',
+      nodir: true
+    })
+    let promises = []
+    let results = {}
+    menuPaths.forEach((filePath) => {
+      let promise = readFile(path.resolve(cwd, filePath), 'utf-8')
+      promise.then((fileContent) => {
+        results[filePath] = JSON.parse(fileContent)
+      })
+      promises.push(promise)
+    })
+    await Promise.all(promises)
+    return results
   }
 }
 
+module.exports = MDParser;
