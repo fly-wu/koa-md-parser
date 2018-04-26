@@ -1,6 +1,6 @@
 {
   "name": "@paas/koa-md-parser",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "markdown parser plugin for koa",
   "main": "index.js",
   "scripts": {
