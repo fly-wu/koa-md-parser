@@ -11,6 +11,10 @@
     "koa"
   ],
   "author": "xifei.wu",
+  "repository": {
+    "type": "git",
+    "url": "http://gitlab.puhuitech.cn/paas-fe/koa-md-parser"
+  },
   "license": "ISC",
   "dependencies": {
     "debug": "^3.1.0",
